@@ -1,0 +1,93 @@
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.std_logic_unsigned.all;
+
+entity MorseCode is
+    port (
+        SW    : in  std_logic_vector(2 downto 0); -- SW2-0 para selecionar a letra
+        KEY0  : in  std_logic;                    -- Reset assíncrono
+        KEY1  : in  std_logic;                    -- Botão para iniciar
+        CLK   : in  std_logic;                    -- Clock
+        LEDR0 : out std_logic                     -- LED para exibir o Morse
+    );
+end MorseCode;
+
+architecture Behavioral of MorseCode is
+    -- Tabela de códigos Morse para letras A-H
+    type MorseTable is array(0 to 7) of std_logic_vector(3 downto 0); 
+    signal morse_codes : MorseTable := (
+        "01",   -- A
+        "1000", -- B
+        "1010", -- C
+        "100",  -- D
+        "0",    -- E
+        "0010", -- F
+        "110",  -- G
+        "0000"  -- H
+    );
+    signal current_code : std_logic_vector(3 downto 0);
+    signal bit_index : integer := 0;
+    signal pulse_counter : integer := 0;
+    signal pulse_duration : integer := 0; -- 0.5s ou 1.5s
+    signal pause_duration : integer := 500; -- Pausa de 0.5s entre símbolos
+    signal state : std_logic_vector(1 downto 0) := "00"; -- Estados da FSM
+    signal led_on : std_logic := '0'; -- Estado do LED
+begin
+
+    process (CLK, KEY0)
+    begin
+        if (KEY0 = '0') then
+            -- Reset assíncrono
+            bit_index <= 0;
+            LEDR0 <= '0';
+            pulse_counter <= 0;
+            state <= "00"; -- Estado inicial
+        elsif rising_edge(CLK) then
+            if (KEY1 = '1') then
+                case state is
+                    -- Estado "00": Carregar o código Morse
+                    when "00" =>
+                        current_code <= morse_codes(to_integer(unsigned(SW)));
+                        bit_index <= 0;
+                        pulse_counter <= 0;
+                        state <= "01"; -- Avançar para exibir o primeiro símbolo
+
+                    -- Estado "01": Exibir o ponto ou traço
+                    when "01" =>
+                        if (bit_index < length(current_code)) then
+                            if (current_code(bit_index) = '0') then
+                                pulse_duration <= 500; -- Ponto (0.5s)
+                            else
+                                pulse_duration <= 1500; -- Traço (1.5s)
+                            end if;
+                            
+                            if (pulse_counter < pulse_duration) then
+                                LEDR0 <= '1'; -- Acender o LED
+                                pulse_counter <= pulse_counter + 1;
+                            else
+                                LEDR0 <= '0'; -- Apagar o LED ao fim do tempo do ponto ou traço
+                                pulse_counter <= 0;
+                                state <= "10"; -- Ir para o estado de pausa
+                            end if;
+                        else
+                            -- Fim da sequência Morse
+                            state <= "00"; -- Volta ao início
+                        end if;
+
+                    -- Estado "10": Pausa entre os símbolos
+                    when "10" =>
+                        if (pulse_counter < pause_duration) then
+                            pulse_counter <= pulse_counter + 1;
+                        else
+                            pulse_counter <= 0;
+                            bit_index <= bit_index + 1; -- Avançar para o próximo bit da sequência
+                            state <= "01"; -- Voltar para o estado de exibição do próximo símbolo
+                        end if;
+
+                    when others =>
+                        state <= "00"; -- Estado padrão (segurança)
+                end case;
+            end if;
+        end if;
+    end process;
+end Behavioral;
